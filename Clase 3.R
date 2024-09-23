@@ -58,4 +58,4 @@ union_01 = data %>%
 data %>% left_join(data_01, by = "schidkn")
 data %>% left_join(data_01, by = "schidkn") %>% group_by(county) %>% summarise(n())
 data_join = data %>% left_join(data_01, by = "schidkn")
-data_join %>% group_by(county) %>% summarise(n())
+data_join %>% group_by(county) %>% summarise(n())  
