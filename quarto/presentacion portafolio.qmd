@@ -1,0 +1,117 @@
+---
+title: "presentacion final portafolio"
+format: html
+editor: visual
+---
+
+## Presentacion Portafolio
+
+Juan Pablo Leiva\
+\
+Este Trabajo Final consiste en un modelo predictivo, que busca encontrar el valor de las activos de una empresa abierta en bolsa en base a un modelo de flujo de caja descontado y proyectando este con una simulacion de montecarlo, esta simulacion de montecarlo sigue una distribucion normal de la vairacion de las ventas que tiene la empresa seleccionada\
+
+```{r}
+# Instalar paquetes necesarios si no están instalados
+if (!require(quantmod)) install.packages("quantmod")
+if (!require(dplyr)) install.packages("dplyr")
+
+# Cargar librerías
+library(quantmod)
+library(dplyr)
+
+# 1. Obtener datos de ingresos históricos trimestrales (extendido con más datos simulados)
+set.seed(123)  # Para reproducibilidad
+ventas_trimestrales_historicas <- c(
+  48000, 50000, 52000, 54000, 56000, 58000, 60000, 62000, 64000, 66000, 
+  68000, 70000, 72000, 74000, 76000, 78000, 80000, 82000, 84000, 86000, 
+  88000, 90000, 92000, 94000, 96000, 98000, 100000
+)  # Ventas simuladas en millones de USD
+
+ventas <- data.frame(Trimestre = 1:length(ventas_trimestrales_historicas), Ventas = ventas_trimestrales_historicas)
+
+# 2. Calcular el crecimiento promedio histórico de las ventas trimestrales
+ventas <- ventas %>%
+  mutate(var_ventas = c(NA, diff(Ventas)),
+         crecimiento = var_ventas / lag(Ventas))
+
+crecimiento_promedio <- mean(ventas$crecimiento, na.rm = TRUE)
+cat("Crecimiento promedio histórico trimestral:", crecimiento_promedio, "\n")
+
+# 3. Suposiciones de costos ajustados y otros factores
+costos_fijos_pct <- runif(1, 0.08, 0.12)  # Costos fijos
+costos_variables_pct <- runif(1, 0.04, 0.06)  # Costos variables
+
+# CAPEX ajustado a menos del 50% de los costos fijos y variables
+capex_pct <- min(runif(1, 0.04, 0.05), 0.5 * (costos_fijos_pct + costos_variables_pct))  
+wk_pct <- runif(1, 0.02, 0.04)  # Capital de trabajo
+wacc <- runif(1, 0.08, 0.12)  # WACC con mayor variación
+tax_rate <- 0.21  # Supuesto de tasa de impuestos del 21%
+g_perpetuidad <- 0.03  # Crecimiento a perpetuidad del 3%
+
+# 4. Simulación de Montecarlo para 5 años con datos trimestrales
+n_simulaciones <- 10000
+trimestres_por_anio <- 4
+n_trimestres_total <- 5 * trimestres_por_anio
+set.seed(123)
+
+# Variable para almacenar la tabla de la primera simulación
+primera_simulacion <- NULL
+
+# Proceso de simulación
+simulaciones <- replicate(n_simulaciones, {
+  ventas_inicial <- ventas$Ventas[length(ventas$Ventas)]
+  ventas_proyectadas <- ventas_inicial * cumprod(1 + rnorm(n_trimestres_total, mean = crecimiento_promedio, sd = 0.03))
+  
+  # Calcular costos en función de las ventas proyectadas
+  costos_fijos_sim <- ventas_proyectadas * costos_fijos_pct
+  costos_variables_sim <- ventas_proyectadas * costos_variables_pct
+  capex_sim <- ventas_proyectadas * capex_pct
+  wk_sim <- ventas_proyectadas * wk_pct
+  
+  # Flujo de caja libre antes de impuestos
+  flujo_caja_libre_pre_tax <- ventas_proyectadas - (costos_fijos_sim + costos_variables_sim + capex_sim + wk_sim)
+  
+  # Flujo de caja libre después de impuestos
+  flujo_caja_libre_sim <- flujo_caja_libre_pre_tax * (1 - tax_rate)
+  
+  # Guardar la primera simulación como ejemplo
+  if (is.null(primera_simulacion)) {
+    primera_simulacion <<- data.frame(
+      Trimestre = 1:n_trimestres_total,
+      Ventas = ventas_proyectadas,
+      Costos_Fijos = costos_fijos_sim,
+      Costos_Variables = costos_variables_sim,
+      CAPEX = capex_sim,
+      WK = wk_sim,
+      Flujo_Caja_Libre = flujo_caja_libre_sim
+    )
+  }
+  
+  # Calcular flujo de caja anual
+  flujo_caja_anual_sim <- sapply(1:5, function(anio) sum(flujo_caja_libre_sim[((anio - 1) * trimestres_por_anio + 1):(anio * trimestres_por_anio)]))
+  
+  # Traer los flujos de caja a valor presente usando el WACC
+  flujos_vp <- flujo_caja_anual_sim / (1 + wacc)^(1:5)
+  
+  # Valor a perpetuidad al final del periodo de 5 años
+  flujo_perpetuo <- flujo_caja_anual_sim[5] * (1 + g_perpetuidad) / (wacc - g_perpetuidad)
+  valor_perpetuidad <- flujo_perpetuo / (1 + wacc)^5
+  
+  # Retornar la suma de flujos de caja descontados más valor de perpetuidad como proxy del valor de los activos
+  sum(flujos_vp) + valor_perpetuidad
+})
+
+# 5. Valor promedio de los activos de Apple mediante Montecarlo
+cat("\nValor estimado de los activos de Apple mediante Montecarlo (VPN a 5 años + perpetuidad, en millones de USD):", mean(simulaciones) / 1e6, "\n")
+
+# 6. Histograma de las simulaciones
+hist(simulaciones / 1e6, main = "Distribución Montecarlo del Valor Actual Neto", 
+     xlab = "VPN (millones de USD)", col = "lightblue", border = "black")
+
+# 7. Mostrar tabla de la primera simulación como ejemplo
+cat("\nTabla de proyección de la primera simulación:\n")
+print(head(primera_simulacion))  # Mostrar solo las primeras filas
+
+```
+
+Se hicieron muchas mejoras al modelo, donde ya podemos representar una mejor simulacion encontrando que la distribucion logaritimica representa mas la variacio nde las ventas trimestrales de apple, se agrego una tabla para poder ver con mas facilidad los resultados de la simulacion y con eso ver donde el modelo esta teniendo errores, sigo sin poder llegar a un valor cercano a la realidad de apple pero con una coneccion via api a capital iq la cual es una plataforma que ocupamos en mi oficina tendre mucha informacion para poder pulir esos detalles, ya que actualmente tengo que agregar manualmente los resultados de la ventas ya que solo se puede descargar el precio de la accion
